@@ -1,0 +1,58 @@
+cat << 'EOF' > docker-compose.yml
+services:
+  app:
+    image: mendhak/http-https-echo:40
+    container_name: task-app
+    restart: always
+
+  nginx1:
+    image: nginx:alpine
+    container_name: task-nginx1
+    ports:
+      - "8881:80"
+    volumes:
+      - type: bind
+        source: ./nginx-edge.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+    depends_on:
+      - nginx2
+
+  nginx2:
+    image: nginx:alpine
+    container_name: task-nginx2
+    ports:
+      - "8882:80"
+    volumes:
+      - type: bind
+        source: ./nginx-internal.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+    networks:
+      default:
+        # Для nginx2 под именем next-hop будет откликаться nginx3
+        links:
+          - nginx3:next-hop
+    depends_on:
+      - nginx3
+
+  nginx3:
+    image: nginx:alpine
+    container_name: task-nginx3
+    ports:
+      - "8883:80"
+    volumes:
+      - type: bind
+        source: ./nginx-internal.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+    networks:
+      default:
+        # Для nginx3 под именем next-hop будет откликаться приложение app на порт 8080
+        links:
+          - app:next-hop
+    # Хак для перенаправления со стандартного 80 на внутренний порт приложения 8080
+    command: /bin/sh -c "sed -i 's/http:\/\/next-hop/http:\/\/next-hop:8080/g' /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
+    depends_on:
+      - app
+EOF
